@@ -157,6 +157,111 @@ if (shExpMatch(lowerHost, "*.contoso.com")) {
 }
 ```
 
+## 本機測試
+
+### 1. 啟動本機 HTTP Server 託管 PAC 檔案
+
+PAC 檔案必須透過 HTTP/HTTPS 提供，不支援 `file://` 路徑。使用 Python 在本機快速啟動：
+
+```bash
+# 進入 proxy.pac 所在目錄
+cd /path/to/proxy-pac
+
+# 啟動 HTTP Server（port 8080）
+python3 -m http.server 8080
+```
+
+PAC 檔案 URL 為：`http://127.0.0.1:8080/proxy.pac`
+
+### 2. 設定系統使用本機 PAC 檔案
+
+#### macOS（指令）
+
+```bash
+# 查看可用的網路介面名稱
+networksetup -listallnetworkservices
+
+# 開啟 - 設定自動代理伺服器 PAC URL（以 Wi-Fi 為例）
+networksetup -setautoproxyurl "Wi-Fi" "http://127.0.0.1:8080/proxy.pac"
+
+# 確認已套用
+networksetup -getautoproxyurl "Wi-Fi"
+```
+
+```bash
+# 關閉 - 停用自動代理伺服器設定
+networksetup -setautoproxystate "Wi-Fi" off
+
+# 確認已關閉
+networksetup -getautoproxyurl "Wi-Fi"
+```
+
+> **提示**：若使用有線網路，請將 `"Wi-Fi"` 替換為 `"Ethernet"` 或對應的介面名稱。
+
+#### Windows（指令）
+
+```powershell
+# 開啟 - 設定自動代理伺服器 PAC URL
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v AutoConfigURL /t REG_SZ /d "http://127.0.0.1:8080/proxy.pac" /f
+
+# 確認已套用
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v AutoConfigURL
+```
+
+```powershell
+# 關閉 - 移除自動代理伺服器設定
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v AutoConfigURL /f
+```
+
+#### Linux（環境變數，僅適用於支援 PAC 的應用程式）
+
+```bash
+# 開啟
+export http_proxy="http://127.0.0.1:8080/proxy.pac"
+export https_proxy="http://127.0.0.1:8080/proxy.pac"
+
+# 關閉
+unset http_proxy
+unset https_proxy
+```
+
+> **注意**：Linux CLI 工具（如 `curl`、`wget`）多數不支援 PAC 檔案解析，環境變數方式僅對部分應用有效。建議使用瀏覽器設定或搭配 `pactester` 驗證。
+
+### 3. 使用 pactester 驗證 PAC 邏輯
+
+[`pactester`](https://github.com/manugarg/pacparser) 可在不套用系統設定的情況下，直接測試 PAC 檔案對特定 URL 的回傳結果：
+
+```bash
+# macOS 安裝
+brew install pacparser
+
+# 測試 Azure Storage Blob（預期回傳 DIRECT）
+pactester -p proxy.pac -u "https://mystorage.blob.core.windows.net/container/file"
+
+# 測試外部網站（預期回傳 PROXY 10.0.0.5:8000）
+pactester -p proxy.pac -u "https://www.google.com"
+
+# 測試內部主機名（預期回傳 DIRECT）
+pactester -p proxy.pac -u "http://intranet"
+
+# 測試 *.tw 域名（預期回傳 DIRECT）
+pactester -p proxy.pac -u "https://www.microsoft.com.tw"
+
+# 批次測試多個 URL
+cat <<EOF | while read url; do echo "$url → $(pactester -p proxy.pac -u "$url")"; done
+https://mystorage.blob.core.windows.net/data
+https://mydb.database.windows.net
+https://myoai.openai.azure.com/v1/chat
+https://www.google.com
+https://internal.contoso.tw
+http://intranet
+EOF
+```
+
+### 4. 使用瀏覽器驗證
+
+開啟瀏覽器並設定 PAC URL 後，可透過開發者工具（F12）的「Network」分頁觀察請求是否經由 Proxy 或直連。
+
 ## 注意事項
 
 - **僅涵蓋 Commercial Cloud**：Government (`*.usgovcloudapi.net`) 與 China (`*.chinacloudapi.cn`) 雲端的 DNS Zones 未包含於此版本。如有需要，請另行加入。
