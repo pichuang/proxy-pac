@@ -1,4 +1,4 @@
-# Azure Private Link Proxy Auto-Configuration (PAC)
+# Proxy Auto-Configuration (PAC)
 
 企業環境中，用於將 Azure Private Link、內部網段及特定域名流量繞過 Forward Proxy 的 PAC (Proxy Auto-Configuration) 檔案。
 
