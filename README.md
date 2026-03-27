@@ -161,14 +161,18 @@ if (shExpMatch(lowerHost, "*.contoso.com")) {
 
 ### 1. 啟動本機 HTTP Server 託管 PAC 檔案
 
-PAC 檔案必須透過 HTTP/HTTPS 提供，不支援 `file://` 路徑。使用 Python 在本機快速啟動：
+PAC 檔案必須透過 HTTP/HTTPS 提供，不支援 `file://` 路徑。使用 Python 在本機快速啟動，並設定正確的 MIME 類型：
 
 ```bash
 # 進入 proxy.pac 所在目錄
 cd /path/to/proxy-pac
 
-# 啟動 HTTP Server（port 8080）
-python3 -m http.server 8080
+# 啟動 HTTP Server（port 8080），並註冊 .pac 的 MIME 類型
+python3 -c "
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+SimpleHTTPRequestHandler.extensions_map['.pac'] = 'application/x-ns-proxy-autoconfig'
+HTTPServer(('0.0.0.0', 8080), SimpleHTTPRequestHandler).serve_forever()
+"
 ```
 
 PAC 檔案 URL 為：`http://127.0.0.1:8080/proxy.pac`
@@ -261,6 +265,30 @@ EOF
 ### 4. 使用瀏覽器驗證
 
 開啟瀏覽器並設定 PAC URL 後，可透過開發者工具（F12）的「Network」分頁觀察請求是否經由 Proxy 或直連。
+
+### 5. 驗證 PAC 檔案 MIME 類型
+
+PAC 檔案必須以 `application/x-ns-proxy-autoconfig` MIME 類型提供，否則部分用戶端（如 IE、Edge、macOS 系統 Proxy）會拒絕載入。啟動 HTTP Server 後，使用以下方式驗證：
+
+```bash
+# 檢查 HTTP Response Header 中的 Content-Type
+curl -I http://127.0.0.1:8080/proxy.pac
+```
+
+預期輸出應包含：
+
+```
+Content-Type: application/x-ns-proxy-autoconfig
+```
+
+若顯示 `application/octet-stream` 或其他類型，表示 Web Server 未正確設定 MIME 類型，請依據所使用的伺服器進行調整：
+
+| Web Server | 設定方式 |
+|---|---|
+| **Nginx** | 在 `nginx.conf` 或 `mime.types` 加入 `application/x-ns-proxy-autoconfig pac;`，或在 `location /proxy.pac` 中設定 `default_type application/x-ns-proxy-autoconfig;` |
+| **Apache** | 在 `.htaccess` 或 `httpd.conf` 加入 `AddType application/x-ns-proxy-autoconfig .pac` |
+| **IIS** | 在 `web.config` 的 `<staticContent>` 加入 `<mimeMap fileExtension=".pac" mimeType="application/x-ns-proxy-autoconfig" />` |
+| **Azure Blob Storage** | 上傳時指定 `--content-type 'application/x-ns-proxy-autoconfig'` |
 
 ## 注意事項
 
