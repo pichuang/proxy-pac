@@ -135,15 +135,15 @@ function FindProxyForURL(url, host) {
 
         // ---- 4.09 Internet of Things / IoT (5 rules) ----
         // IoT Hub / Device Provisioning Service / Device Update / IoT Central / Digital Twins
-        shExpMatch(lowerHost, "*.azure-devices.net") ||
-        shExpMatch(lowerHost, "*.azure-devices-provisioning.net") ||
-        shExpMatch(lowerHost, "*.azureiotcentral.com") ||
-        shExpMatch(lowerHost, "*.api.adu.microsoft.com") ||
-        shExpMatch(lowerHost, "*.digitaltwins.azure.net") ||
+        // shExpMatch(lowerHost, "*.azure-devices.net") ||
+        // shExpMatch(lowerHost, "*.azure-devices-provisioning.net") ||
+        // shExpMatch(lowerHost, "*.azureiotcentral.com") ||
+        // shExpMatch(lowerHost, "*.api.adu.microsoft.com") ||
+        // shExpMatch(lowerHost, "*.digitaltwins.azure.net") ||
 
         // ---- 4.10 Media (1 rule) ----
         // Media Services (Key Delivery / Live Event / Streaming Endpoint)
-        shExpMatch(lowerHost, "*.media.azure.net") ||
+        // shExpMatch(lowerHost, "*.media.azure.net") ||
 
         // ---- 4.11 Management and Governance (13 rules) ----
         // Automation / Backup / Site Recovery / Monitor / Purview / Migrate / Grafana / Prometheus
