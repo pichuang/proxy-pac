@@ -34,13 +34,13 @@
 | 4.06 | **Containers** | 3 | AKS、Container Apps、Container Registry (ACR) |
 | 4.07 | **Security** | 4 | Key Vault、Managed HSM、App Configuration、Attestation |
 | 4.08 | **Integration** | 6 | Service Bus、Event Hubs、Event Grid、API Management、Health Data Services |
-| 4.09 | **IoT** | 5 | IoT Hub、Device Provisioning Service、Device Update、IoT Central、Digital Twins |
-| 4.10 | **Media** | 1 | Media Services |
+| 4.09 | ~~**IoT**~~ | ~~5~~ | ~~IoT Hub、Device Provisioning Service、Device Update、IoT Central、Digital Twins~~（已停用） |
+| 4.10 | ~~**Media**~~ | ~~1~~ | ~~Media Services~~（已停用） |
 | 4.11 | **Management & Governance** | 13 | Azure Monitor、Automation、Backup、Site Recovery、Purview、Grafana、Migrate、Prometheus |
 | 4.12 | **Hybrid + Multicloud** | 3 | Azure Arc、Guest Configuration、Kubernetes Configuration |
 | 4.13 | **Web** | 6 | Cognitive Search、App Service / Functions、SignalR、Static Web Apps、Web PubSub |
 
-**Azure Private Link 規則合計：87 條**
+**Azure Private Link 規則合計：81 條啟用 / 6 條停用（IoT 5 條 + Media 1 條已註解）**
 
 ## 檔案結構
 
