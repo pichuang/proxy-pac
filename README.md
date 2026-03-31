@@ -15,32 +15,39 @@
 透過 PAC 檔案，讓用戶端在發出 HTTP/HTTPS 請求時，依序判斷：
 
 1. 是否為內部主機（非 FQDN）
-2. 是否屬於內部網段（`10.0.0.0/8`）或特定國家域名（`*.tw`）
-3. 是否屬於 Azure Private Link DNS Zone
+2. 是否為特定國家域名（`*.tw`）
+3. 是否屬於 Azure Private Link DNS Zone（Hash Table 查表）
+4. 是否屬於內部網段（`10.0.0.0/8`）
 
 若符合以上任何條件，則直接連線（`DIRECT`），不經過 Proxy。
 
+## 效能設計
+
+- **Hash Table 查表**：以域名後綴為 key 的 Hash Table 取代逐條 `shExpMatch()` 比對，時間複雜度由 O(n) 降至 O(1)
+- **延遲 DNS 解析**：`dnsResolve()` 為阻塞式呼叫，移至流程最末步驟，僅對未匹配任何規則的請求觸發
+- **原生函式優先**：使用 `dnsDomainIs()` 取代 `shExpMatch()` 做域名後綴比對
+
 ## 涵蓋的 Azure 服務 DNS Zones
 
-本 PAC 檔依據微軟官方文件整理，涵蓋 **Azure Commercial (Public Cloud)** 所有 Private Link DNS Zones：
+本 PAC 檔依據[微軟官方文件](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns)整理，涵蓋 **Azure Commercial (Public Cloud)** 所有 Private Link DNS Zones。分類依企業環境常見使用頻率由高至低排列：
 
-| 編號 | 分類 | 規則數 | 涵蓋服務 |
+| 順序 | 分類 | 規則數 | 涵蓋服務 |
 |---|---|---|---|
-| 4.01 | **Storage** | 7 | Blob、Table、Queue、File、Web、Data Lake (DFS)、File Sync |
-| 4.02 | **Databases** | 15 | SQL Database、Cosmos DB (SQL/MongoDB/Cassandra/Gremlin/Table/Analytical)、PostgreSQL (Cosmos/Flexible/Single)、MySQL、MariaDB、Redis (Standard/Enterprise/Managed) |
-| 4.03 | **AI + Machine Learning** | 10 | Azure ML (Workspace/Registry)、Cognitive Services、Azure OpenAI、AI Services、Bot Service |
-| 4.04 | **Analytics** | 12 | Synapse Analytics、Data Factory、HDInsight、Data Explorer (Kusto)、Power BI、Databricks、Fabric |
-| 4.05 | **Compute** | 2 | Batch、Virtual Desktop (AVD) |
-| 4.06 | **Containers** | 3 | AKS、Container Apps、Container Registry (ACR) |
-| 4.07 | **Security** | 4 | Key Vault、Managed HSM、App Configuration、Attestation |
-| 4.08 | **Integration** | 6 | Service Bus、Event Hubs、Event Grid、API Management、Health Data Services |
-| 4.09 | ~~**IoT**~~ | ~~5~~ | ~~IoT Hub、Device Provisioning Service、Device Update、IoT Central、Digital Twins~~（已停用） |
-| 4.10 | ~~**Media**~~ | ~~1~~ | ~~Media Services~~（已停用） |
-| 4.11 | **Management & Governance** | 13 | Azure Monitor、Automation、Backup、Site Recovery、Purview、Grafana、Migrate、Prometheus |
-| 4.12 | **Hybrid + Multicloud** | 3 | Azure Arc、Guest Configuration、Kubernetes Configuration |
-| 4.13 | **Web** | 6 | Cognitive Search、App Service / Functions、SignalR、Static Web Apps、Web PubSub |
+| 1 | **Storage** | 7 | Blob、File、Data Lake (DFS)、Queue、Table、Static Website、File Sync |
+| 2 | **Web** | 6 | App Service / Functions、Static Web Apps、AI Search、SignalR、Web PubSub |
+| 3 | **Security** | 4 | Key Vault、App Configuration、Managed HSM、Attestation |
+| 4 | **Databases** | 15 | SQL Database、Cosmos DB (SQL/MongoDB/Cassandra/Gremlin/Table/Analytical)、PostgreSQL、MySQL、MariaDB、Redis (Standard/Enterprise) |
+| 5 | **Containers** | 3 | Container Registry (ACR)、AKS、Container Apps |
+| 6 | **Management & Governance** | 13 | Azure Monitor、Log Analytics、Prometheus、Grafana、Backup、Site Recovery、Automation、Purview、Migrate |
+| 7 | **AI + Machine Learning** | 10 | Azure OpenAI、Cognitive Services、AI Services、Azure ML (Workspace/Inference)、Bot Service |
+| 8 | **Integration** | 6 | Service Bus / Event Hubs、Event Grid、API Management、Health Data Services |
+| 9 | **Analytics** | 12 | Fabric、Databricks、Data Factory、Synapse、Power BI、Kusto、HDInsight |
+| 10 | **Compute** | 2 | Azure Virtual Desktop、Batch |
+| 11 | **Hybrid + Multicloud** | 3 | Azure Arc、Guest Configuration、Kubernetes Configuration |
+| 12 | ~~**IoT**~~ | ~~5~~ | ~~IoT Hub、Device Provisioning、IoT Central、Device Update、Digital Twins~~（已停用） |
+| 13 | ~~**Media**~~ | ~~1~~ | ~~Media Services~~（已停用） |
 
-**Azure Private Link 規則合計：81 條啟用 / 6 條停用（IoT 5 條 + Media 1 條已註解）**
+**合計：81 條啟用 / 6 條停用（IoT 5 條 + Media 1 條已註解）**
 
 ## 檔案結構
 
@@ -65,22 +72,26 @@ ms-proxy/
   └────────────────────────────┘
         │是                 否│
         ▼                    ▼
-     DIRECT          ┌─ 第 3 步 ─────────────┐
-                     │ 3a. 10.0.0.0/8 網段？  │
-                     │ 3b. *.tw 域名？        │
-                     └────────────────────────┘
-                           │是           否│
-                           ▼              ▼
-                        DIRECT    ┌─ 第 4 步 ──────────────┐
-                                  │ Azure Private Link     │
-                                  │ DNS Zone 比對 (87 條)  │
-                                  └────────────────────────┘
-                                       │是            否│
-                                       ▼               ▼
-                                    DIRECT      ┌─ 第 5 步 ─────────┐
-                                                │ 送往企業 Proxy    │
-                                                │ 10.0.0.5:8000    │
-                                                └───────────────────┘
+     DIRECT      ┌─ 第 3 步：*.tw 域名？ ─┐
+                 └─────────────────────────┘
+                       │是              否│
+                       ▼                 ▼
+                    DIRECT    ┌─ 第 4 步 ─────────────────────────┐
+                              │ Azure Private Link DNS Zone 比對 │
+                              │ (Hash Table 查表，81 條)         │
+                              └───────────────────────────────────┘
+                                     │是                      否│
+                                     ▼                         ▼
+                                  DIRECT       ┌─ 第 5 步 ──────────────────┐
+                                               │ 10.0.0.0/8 私有網段？      │
+                                               │ (dnsResolve，阻塞式 DNS)   │
+                                               └────────────────────────────┘
+                                                     │是                 否│
+                                                     ▼                    ▼
+                                                  DIRECT       ┌─ 第 6 步 ─────────┐
+                                                               │ 送往企業 Proxy    │
+                                                               │ 10.0.0.5:8000    │
+                                                               └───────────────────┘
 ```
 
 ## 使用方式
@@ -122,7 +133,7 @@ User Configuration → Preferences → Windows Settings → Registry
 
 ### 3. 自訂 Proxy 位址
 
-預設 Proxy 位址為 `10.0.0.5:8000`（強制走 Proxy，不含 Failover 直連）。可依需求修改 `proxy.pac` 第 5 步：
+預設 Proxy 位址為 `10.0.0.5:8000`（強制走 Proxy，不含 Failover 直連）。可依需求修改 `proxy.pac` 第 6 步：
 
 ```javascript
 // 單一 Proxy（目前預設）
@@ -143,16 +154,19 @@ return "PROXY 10.0.0.5:8000; SOCKS5 10.0.0.7:1080; DIRECT";
 如需新增額外的繞過域名或網段，可在 `proxy.pac` 對應區段加入：
 
 ```javascript
-// 第 3 步新增其他 RFC 1918 網段
+// 第 3 步後新增其他域名後綴（快速字串比對，不觸發 DNS）
+if (dnsDomainIs(lowerHost, ".contoso.com")) {
+    return "DIRECT";
+}
+
+// 在 AZURE_PL_ZONES Hash Table 中新增 Private Link Zone
+".your-custom-service.azure.com": 1,   // 自訂服務
+
+// 第 5 步新增其他 RFC 1918 網段（注意：dnsResolve 為阻塞式呼叫）
 if (isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0")) {
     return "DIRECT";
 }
 if (isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0")) {
-    return "DIRECT";
-}
-
-// 第 3 步新增其他國家/公司域名
-if (shExpMatch(lowerHost, "*.contoso.com")) {
     return "DIRECT";
 }
 ```
@@ -297,6 +311,7 @@ Content-Type: application/x-ns-proxy-autoconfig
 - **Azure Resource Manager**：`privatelink.azure.com` 因範圍過廣（會匹配所有 `*.azure.com`），未納入規則，避免誤繞過不應直連的流量。
 - **定期更新**：Azure 服務持續新增，建議定期比對[官方文件](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns)更新此 PAC 檔。
 - **預設無 Failover**：目前預設路由為 `PROXY 10.0.0.5:8000`（不含 `DIRECT`），Proxy 不可用時連線將失敗。如需 Failover 請參考上方「自訂 Proxy 位址」區段。
+- **Hash Table 排序**：`AZURE_PL_ZONES` 內條目順序不影響查找速度（JavaScript 物件屬性查找與定義順序無關），排序純粹為提升可讀性與可維護性。
 
 ## 參考資料
 
